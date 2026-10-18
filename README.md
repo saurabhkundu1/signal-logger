@@ -1,105 +1,42 @@
-# Signal Logger System 📡
+# Signal Atlas
 
-**Signal Logger** is a Kotlin-based solution that captures network signal metrics and system settings from Android devices and transmits them to a REST backend server.
+Signal Atlas records cellular reception and lets people compare anonymous operator readings by approximate area. The Android app is named **Signal Atlas** in app stores; `signal-logger` remains the source repository name.
 
----
+## Android app
 
-## 🚀 Purpose & Overview
+- Displays live signal strength, carrier, network type, roaming, and SIM state.
+- Logging starts only after the user grants phone-state and approximate-location permissions and taps **Start Service**.
+- Uploads at most one reading per minute while logging is active.
+- Sends a five-character geohash (roughly a 5 km cell), never exact coordinates, account details, or phone numbers.
+- Displays shared averages by area cell, operator, and network type.
+- Stores the chosen server URL on the phone. The app requires HTTPS.
+- Works without a server for live signal readings; shared reports need a configured server.
 
-The goal of this application is to monitor cellular network telemetry in real-time, display current network quality metrics to the user, and periodically log signal metrics to a backend server for analytics or network performance mapping.
+The app does not create accounts. Reports are public to other users of the configured server. Stop logging or revoke permissions at any time.
 
-### Key Metrics Monitored:
-- **Network Operator Name** (e.g. Verizon, T-Mobile, Jio, Airtel) & SIM Operator Name
-- **Signal Strength in dBm** (e.g. -75 dBm to -110 dBm) & Signal Quality Level (0-4 bars)
-- **Network Generation** (5G NR, LTE / 4G, 3G UMTS, 2G EDGE)
-- **Data Connection State** (Connected, Connecting, Disconnected)
-- **SIM Card Status** & **Network Roaming State**
+## Server
 
----
+The Ktor API accepts samples at `POST /api/signal-metrics` and returns aggregated reports at `GET /api/signal-metrics/areas`. The JSONL data file is stored under `DATA_DIR` (default: `./data/signal-metrics.jsonl`). Mount a persistent volume at that path when self-hosting so data survives restarts. The server intentionally returns area aggregates instead of exposing raw samples.
 
-## 🏗 System Architecture
+Build and start the server:
 
-```
-  +-------------------------------------------------------------+
-  |                   Android Client App (`app`)                |
-  |                                                             |
-  |  +---------------------+      +---------------------------+  |
-  |  | TelephonyManager    | ---> | SignalLoggerForeground    |  |
-  |  | (System Telephony)  |      | Service (Background Sync) |  |
-  |  +---------------------+      +-------------+-------------+  |
-  |             |                               |                |
-  |             v                               v HTTP POST      |
-  |  +-------------------------------------+    |                |
-  |  | Jetpack Compose Dashboard UI        |    |                |
-  |  +-------------------------------------+    |                |
-  +---------------------------------------------|----------------+
-                                                v
-  +-------------------------------------------------------------+
-  |                  Ktor REST Server (`server`)                |
-  |                                                             |
-  |  - POST /api/signal-metrics (Ingest Telephony Payload)      |
-  |  - GET  /api/signal-metrics (Retrieve History Stream)        |
-  |  - GET  /api/signal-metrics/latest (Get Latest Metric)      |
-  +-------------------------------------------------------------+
-```
-
----
-
-## 📱 Features
-
-1. **Jetpack Compose Network Dashboard (`app`)**:
-   - **Visual Signal Strength Gauge**: Live dBm readout with dynamic color indicator (Green = Excellent, Yellow = Moderate, Red = Weak).
-   - **Signal Bar Graphic**: Visual 4-bar signal level indicator.
-   - **System Telephony Grid**: Cards displaying SIM operator, country ISO code, data connection status, SIM status, and roaming state.
-   - **Background Service Toggle**: One-tap control to start/stop continuous background logging.
-
-2. **Background Telemetry Service**:
-   - Android Foreground Service that runs reliably in the background to log signal metrics every 5 seconds.
-
-3. **Ktor REST Server (`server`)**:
-   - Built with Kotlin Ktor & Netty engine.
-   - Thread-safe repository storing incoming network telemetry payloads.
-
----
-
-## 🛠 How to Build & Run
-
-### 1. Start the Ktor Backend Server
-Run the Ktor server using Gradle:
 ```bash
 ./gradlew :server:run
 ```
-Or run `com.example.signallogger.ApplicationKt` directly from Android Studio. The server listens on `http://localhost:8080`.
 
-### 2. Run the Android Client App
-1. Open the project in Android Studio.
-2. Select the **`app`** run configuration and deploy to an Android device or emulator.
-   - *Note for Android Emulator*: Use `http://10.0.2.2:8080` to connect to the backend server running on your host machine.
-3. Grant **Telephony** and **Location** permissions when prompted on screen.
-4. Tap **Start Service** to begin posting live telemetry data to the backend.
+Set `DATA_DIR` to a durable directory and `PORT` to the port supplied by your hosting platform. Put the server behind HTTPS before sharing its URL with app users. The repository includes the server source; it does not contain a hosted endpoint.
 
----
+## Build the app
 
-## 📁 Project Structure
-
+```bash
+./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease
 ```
-signal-logger/
-├── app/                  # Android Client App module (Kotlin + Jetpack Compose)
-│   ├── src/main/java/com/example/signallogger/
-│   │   ├── data/         # Data Transfer Objects (SignalMetricDto)
-│   │   ├── network/      # Ktor HTTP Client (SignalApiClient)
-│   │   ├── service/      # Background Foreground Service
-│   │   ├── telephony/    # TelephonyManager System Listener
-│   │   └── ui/           # Jetpack Compose UI (MainActivity)
-│   └── AndroidManifest.xml
-├── server/               # Ktor Backend Server module
-│   └── src/main/kotlin/com/example/signallogger/
-│       ├── model/        # SignalMetric model
-│       ├── repository/   # Thread-safe SignalRepository
-│       └── Application.kt # Ktor main server application & routes
-├── gradle/
-│   └── libs.versions.toml # Gradle Version Catalog
-├── build.gradle.kts      # Root build script
-├── settings.gradle.kts   # Module settings
-└── README.md
-```
+
+## Privacy
+
+Signal Atlas uploads the carrier name, network type, signal strength, signal level, and coarse area cell only when the user starts logging and configures a server. The configured server operator controls retention and public access to aggregate reports. The default server stores data locally in JSON Lines format; configure a persistent data volume and publish a privacy notice before operating a public instance.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

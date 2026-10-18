@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.signallogger.data.SignalMetricDto
+import com.example.signallogger.location.AreaCellProvider
 import com.example.signallogger.network.SignalApiClient
 import com.example.signallogger.telephony.TelephonySignalManager
 import kotlinx.coroutines.CoroutineScope
@@ -28,46 +29,52 @@ class SignalLoggerForegroundService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
     private lateinit var telephonySignalManager: TelephonySignalManager
+    private lateinit var areaCellProvider: AreaCellProvider
     private val apiClient = SignalApiClient()
+    private var loggingJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
         telephonySignalManager = TelephonySignalManager(this)
         telephonySignalManager.startListening()
+        areaCellProvider = AreaCellProvider(this)
+        areaCellProvider.start()
         createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val serverUrl = intent?.getStringExtra(EXTRA_SERVER_URL) ?: "http://10.0.2.2:8080"
-        apiClient.baseUrl = serverUrl
-
+        val serverUrl = intent?.getStringExtra(EXTRA_SERVER_URL).orEmpty().trim()
         val notification = createNotification("Signal Logging Active", "Server: $serverUrl")
         startForeground(NOTIFICATION_ID, notification)
+        if (!SignalApiClient.isValidServerUrl(serverUrl)) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        apiClient.baseUrl = serverUrl
 
-        startTelemetryLoggingLoop()
+        loggingJob?.cancel()
+        loggingJob = startTelemetryLoggingLoop()
 
         return START_STICKY
     }
 
-    private fun startTelemetryLoggingLoop() {
-        serviceScope.launch {
-            while (isActive) {
-                val metric = telephonySignalManager.fetchCurrentMetricNow()
+    private fun startTelemetryLoggingLoop(): Job = serviceScope.launch {
+        while (isActive) {
+            val areaCell = areaCellProvider.currentAreaCell
+            if (areaCell != null) {
+                val metric = telephonySignalManager.fetchCurrentMetricNow().copy(areaCell = areaCell)
                 val result = apiClient.postSignalMetric(metric)
-                if (result.isSuccess) {
-                    val saved = result.getOrNull()
-                    saved?.let {
-                        _latestLoggedMetric.value = it
-                    }
-                }
-                delay(5000)
+                if (result.isSuccess) _latestLoggedMetric.value = metric
             }
+            delay(60_000)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         telephonySignalManager.stopListening()
+        areaCellProvider.stop()
+        apiClient.close()
         serviceJob.cancel()
     }
 

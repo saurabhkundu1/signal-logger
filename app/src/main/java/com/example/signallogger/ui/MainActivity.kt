@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.signallogger.data.SignalMetricDto
+import com.example.signallogger.data.SignalAreaSummaryDto
 import com.example.signallogger.network.SignalApiClient
 import com.example.signallogger.service.SignalLoggerForegroundService
 import com.example.signallogger.telephony.TelephonySignalManager
@@ -70,8 +71,8 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val granted = permissions[Manifest.permission.READ_PHONE_STATE] == true ||
-                permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val granted = permissions[Manifest.permission.READ_PHONE_STATE] == true &&
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         permissionState.value = granted
         if (granted) {
             telephonySignalManager.startListening()
@@ -81,8 +82,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         telephonySignalManager = TelephonySignalManager(this)
-
-        checkAndRequestPermissions()
 
         setContent {
             SignalLoggerFrontEndApp(
@@ -96,14 +95,16 @@ class MainActivity : ComponentActivity() {
     private fun checkAndRequestPermissions() {
         val permissionsToRequest = mutableListOf(
             Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        val allGranted = permissionsToRequest.all {
+        val allGranted = listOf(
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ).all {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
 
@@ -134,19 +135,25 @@ fun SignalLoggerFrontEndApp(
     val currentMetric by telephonySignalManager.currentMetric.collectAsState()
     val latestLoggedMetric by SignalLoggerForegroundService.latestLoggedMetric.collectAsState()
 
-    var serverUrl by remember { mutableStateOf("http://10.0.2.2:8080") }
+    val preferences = remember { context.getSharedPreferences("signal_atlas_settings", 0) }
+    var serverUrl by remember { mutableStateOf(preferences.getString("server_url", "").orEmpty()) }
     var isServiceRunning by remember { mutableStateOf(false) }
-    var metricsHistory by remember { mutableStateOf<List<SignalMetricDto>>(emptyList()) }
+    var metricsHistory by remember { mutableStateOf<List<SignalAreaSummaryDto>>(emptyList()) }
     var statusMessage by remember { mutableStateOf("Ready") }
 
-    val apiClient = remember(serverUrl) { SignalApiClient(serverUrl) }
+    val apiClient = remember { SignalApiClient() }
+    apiClient.baseUrl = serverUrl
 
     fun refreshHistory() {
+        if (!SignalApiClient.isValidServerUrl(serverUrl)) {
+            statusMessage = "Enter a hosted HTTPS server URL to view shared area reports"
+            return
+        }
         scope.launch {
             val result = apiClient.fetchMetricsHistory()
             if (result.isSuccess) {
-                metricsHistory = result.getOrDefault(emptyList()).reversed()
-                statusMessage = "Refreshed ${metricsHistory.size} entries"
+                metricsHistory = result.getOrDefault(emptyList())
+                statusMessage = "Refreshed ${metricsHistory.size} area summaries"
             } else {
                 statusMessage = "Failed to connect: ${result.exceptionOrNull()?.localizedMessage}"
             }
@@ -172,7 +179,7 @@ fun SignalLoggerFrontEndApp(
                                     .background(if (isServiceRunning) Color(0xFF4CAF50) else Color(0xFFFF9800))
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Network Signal Dashboard", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Signal Atlas", color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -201,21 +208,29 @@ fun SignalLoggerFrontEndApp(
                 // Backend REST Service Sync Component
                 BackendSyncCard(
                     serverUrl = serverUrl,
-                    onServerUrlChange = { serverUrl = it },
+                    onServerUrlChange = {
+                        serverUrl = it
+                        preferences.edit().putString("server_url", it.trim()).apply()
+                    },
                     isServiceRunning = isServiceRunning,
                     statusMessage = statusMessage,
                     onToggleService = {
                         val intent = Intent(context, SignalLoggerForegroundService::class.java).apply {
                             putExtra(SignalLoggerForegroundService.EXTRA_SERVER_URL, serverUrl)
                         }
-                        if (!isServiceRunning) {
+                        if (!isServiceRunning && !hasPermissions) {
+                            onRequestPermissions()
+                            statusMessage = "Allow phone state and approximate location to start logging"
+                        } else if (!isServiceRunning && !SignalApiClient.isValidServerUrl(serverUrl)) {
+                            statusMessage = "Enter a hosted HTTPS server URL before starting shared logging"
+                        } else if (!isServiceRunning) {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                 context.startForegroundService(intent)
                             } else {
                                 context.startService(intent)
                             }
                             isServiceRunning = true
-                            statusMessage = "Foreground Logging Active"
+                            statusMessage = "Logging coarse area and signal readings to shared server"
                         } else {
                             context.stopService(intent)
                             isServiceRunning = false
@@ -227,7 +242,7 @@ fun SignalLoggerFrontEndApp(
 
                 // Backend Telemetry Log Stream
                 Text(
-                    text = "Backend Telemetry Log Stream",
+                    text = "Shared Signal by Area and Operator",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -434,7 +449,7 @@ fun BackendSyncCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "REST Server Sync Configuration",
+                text = "Crowdsourced signal reports",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -443,9 +458,17 @@ fun BackendSyncCard(
             OutlinedTextField(
                 value = serverUrl,
                 onValueChange = onServerUrlChange,
-                label = { Text("Ktor Server Base URL") },
+                label = { Text("HTTPS server URL") },
+                placeholder = { Text("https://your-signal-server.example") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Logging stays off until you start it. Shared reports include your operator, signal strength, and an approximate 5 km area cell. Exact coordinates and account details are not uploaded. Anyone using this server can view its area summaries.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -479,9 +502,9 @@ fun BackendSyncCard(
 }
 
 @Composable
-fun MetricHistoryCard(metric: SignalMetricDto) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss dd/MM/yyyy", Locale.getDefault()) }
-    val formattedTime = remember(metric.timestamp) { dateFormat.format(Date(metric.timestamp)) }
+fun MetricHistoryCard(metric: SignalAreaSummaryDto) {
+    val dateFormat = remember { SimpleDateFormat("HH:mm dd/MM/yyyy", Locale.getDefault()) }
+    val formattedTime = remember(metric.lastSeen) { dateFormat.format(Date(metric.lastSeen)) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -501,20 +524,20 @@ fun MetricHistoryCard(metric: SignalMetricDto) {
                     fontSize = 15.sp
                 )
                 Text(
-                    text = "${metric.networkType} • ${metric.dataState} • $formattedTime",
+                    text = "${metric.networkType} • area ${metric.areaCell} • ${metric.sampleCount} samples",
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "${metric.signalStrengthDbm} dBm",
+                    text = "${metric.averageSignalDbm.toInt()} dBm avg",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Level ${metric.signalLevel}/4",
+                    text = "Last: $formattedTime",
                     fontSize = 12.sp,
                     color = Color.Gray
                 )

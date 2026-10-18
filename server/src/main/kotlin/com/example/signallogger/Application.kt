@@ -1,8 +1,7 @@
 package com.example.signallogger
 
-import com.example.signallogger.model.SignalMetric
 import com.example.signallogger.repository.SignalRepository
-import io.ktor.http.HttpHeaders
+import com.example.signallogger.model.SignalMetric
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -11,7 +10,6 @@ import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
@@ -37,11 +35,6 @@ fun Application.module() {
         })
     }
 
-    install(CORS) {
-        anyHost()
-        allowHeader(HttpHeaders.ContentType)
-    }
-
     routing {
         get("/") {
             call.respond(mapOf("status" to "ok", "service" to "Signal Logger Server"))
@@ -53,7 +46,7 @@ fun Application.module() {
                     val metric = call.receive<SignalMetric>()
                     val saved = repository.addMetric(metric)
                     call.respond(HttpStatusCode.Created, saved)
-                } catch (e: Exception) {
+                } catch (e: IllegalArgumentException) {
                     call.respond(
                         HttpStatusCode.BadRequest,
                         mapOf("error" to (e.localizedMessage ?: "Invalid payload"))
@@ -61,18 +54,10 @@ fun Application.module() {
                 }
             }
 
-            get {
-                call.respond(repository.getAllMetrics())
+            get("/areas") {
+                call.respond(repository.getAreaSummaries())
             }
 
-            get("/latest") {
-                val latest = repository.getLatestMetric()
-                if (latest != null) {
-                    call.respond(latest)
-                } else {
-                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "No metrics recorded yet"))
-                }
-            }
         }
     }
 }
