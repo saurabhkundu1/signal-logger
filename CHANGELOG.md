@@ -5,6 +5,7 @@
 - Update AGP and kotlinx serialization to versions required by current Android lint checks.
 - Install the AGP-matched NDK in CI to strip packaged native libraries cleanly.
 - Set the CI runner default Git branch to main to keep checkout output clean.
+- Serialize CI by branch and show full Gradle deprecation diagnostics.
 
 ## 1.2.0 - 2026-10-31
 - Update the Android toolchain and dependencies to current stable versions and target Android 17 (API 37).

@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -28,4 +32,4 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.2" "build-tools;37.0.0" "ndk;28.2.13676358"
       - name: Lint, test, and build
-        run: bash ./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
+        run: bash ./gradlew --no-daemon --warning-mode=all :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
