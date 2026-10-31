@@ -18,7 +18,17 @@ class AreaCellProvider(private val context: Context) {
     var currentAreaCell: String? = null
         private set
 
-    private val listener = LocationListener { location -> currentAreaCell = GeoCell.encode(location) }
+    @Volatile
+    var currentMapCenter: Pair<Double, Double>? = null
+        private set
+
+    private val listener = LocationListener { updateLocation(it) }
+
+    private fun updateLocation(location: Location) {
+        val cell = GeoCell.encode(location)
+        currentAreaCell = cell
+        currentMapCenter = GeoCell.center(cell)
+    }
 
     fun start() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) !=
@@ -27,7 +37,7 @@ class AreaCellProvider(private val context: Context) {
 
         try {
             locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)?.let {
-                if (System.currentTimeMillis() - it.time < MAX_LOCATION_AGE_MS) currentAreaCell = GeoCell.encode(it)
+                if (System.currentTimeMillis() - it.time < MAX_LOCATION_AGE_MS) updateLocation(it)
             }
             locationManager.requestLocationUpdates(
                 LocationManager.NETWORK_PROVIDER,
@@ -38,8 +48,10 @@ class AreaCellProvider(private val context: Context) {
             )
         } catch (_: SecurityException) {
             currentAreaCell = null
+            currentMapCenter = null
         } catch (_: IllegalArgumentException) {
             currentAreaCell = null
+            currentMapCenter = null
         }
     }
 
@@ -90,5 +102,29 @@ private object GeoCell {
             }
         }
         return result.toString().lowercase(Locale.ROOT)
+    }
+
+    fun center(cell: String): Pair<Double, Double> {
+        var latMin = -90.0
+        var latMax = 90.0
+        var lonMin = -180.0
+        var lonMax = 180.0
+        var evenBit = true
+        for (character in cell) {
+            val value = ALPHABET.indexOf(character)
+            require(value >= 0) { "Invalid area cell" }
+            for (bit in 4 downTo 0) {
+                val upper = (value shr bit) and 1 == 1
+                if (evenBit) {
+                    val midpoint = (lonMin + lonMax) / 2
+                    if (upper) lonMin = midpoint else lonMax = midpoint
+                } else {
+                    val midpoint = (latMin + latMax) / 2
+                    if (upper) latMin = midpoint else latMax = midpoint
+                }
+                evenBit = !evenBit
+            }
+        }
+        return (latMin + latMax) / 2 to (lonMin + lonMax) / 2
     }
 }

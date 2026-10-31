@@ -21,4 +21,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "signal-logger"
 include(":app")
-include(":server")

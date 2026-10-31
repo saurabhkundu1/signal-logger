@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="signal_status_bar">#101B20</color>
+    <color name="signal_navigation_bar">#101B20</color>
+    <color name="signal_accent">#78D1D8</color>
+</resources>

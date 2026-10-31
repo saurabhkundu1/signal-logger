@@ -6,12 +6,12 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.signallogger.data.SignalMetricDto
+import com.example.signallogger.data.LocalSignalStore
+import com.example.signallogger.data.SignalReading
 import com.example.signallogger.location.AreaCellProvider
-import com.example.signallogger.network.SignalApiClient
 import com.example.signallogger.telephony.TelephonySignalManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +30,7 @@ class SignalLoggerForegroundService : Service() {
 
     private lateinit var telephonySignalManager: TelephonySignalManager
     private lateinit var areaCellProvider: AreaCellProvider
-    private val apiClient = SignalApiClient()
+    private lateinit var signalStore: LocalSignalStore
     private var loggingJob: Job? = null
 
     override fun onCreate() {
@@ -39,18 +39,14 @@ class SignalLoggerForegroundService : Service() {
         telephonySignalManager.startListening()
         areaCellProvider = AreaCellProvider(this)
         areaCellProvider.start()
+        signalStore = LocalSignalStore(this)
         createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val serverUrl = intent?.getStringExtra(EXTRA_SERVER_URL).orEmpty().trim()
-        val notification = createNotification("Signal Logging Active", "Server: $serverUrl")
+        isRunning = true
+        val notification = createNotification("Signal Logging Active", "Saving readings on this device")
         startForeground(NOTIFICATION_ID, notification)
-        if (!SignalApiClient.isValidServerUrl(serverUrl)) {
-            stopSelf(startId)
-            return START_NOT_STICKY
-        }
-        apiClient.baseUrl = serverUrl
 
         loggingJob?.cancel()
         loggingJob = startTelemetryLoggingLoop()
@@ -61,35 +57,35 @@ class SignalLoggerForegroundService : Service() {
     private fun startTelemetryLoggingLoop(): Job = serviceScope.launch {
         while (isActive) {
             val areaCell = areaCellProvider.currentAreaCell
-            if (areaCell != null) {
+            val center = areaCellProvider.currentMapCenter
+            if (areaCell != null && center != null) {
                 val metric = telephonySignalManager.fetchCurrentMetricNow().copy(areaCell = areaCell)
-                val result = apiClient.postSignalMetric(metric)
-                if (result.isSuccess) _latestLoggedMetric.value = metric
+                signalStore.append(SignalReading(metric.operatorName, metric.networkType,
+                    metric.signalStrengthDbm, areaCell, center.first, center.second, metric.timestamp))
+                _latestLoggedMetric.value = metric
             }
             delay(60_000)
         }
     }
 
     override fun onDestroy() {
+        isRunning = false
         super.onDestroy()
         telephonySignalManager.stopListening()
         areaCellProvider.stop()
-        apiClient.close()
         serviceJob.cancel()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Signal Logger Service",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
-        }
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Signal Logger Service",
+            NotificationManager.IMPORTANCE_LOW
+        )
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(channel)
     }
 
     private fun createNotification(title: String, content: String): Notification {
@@ -104,8 +100,8 @@ class SignalLoggerForegroundService : Service() {
     companion object {
         const val CHANNEL_ID = "signal_logger_channel"
         const val NOTIFICATION_ID = 1001
-        const val EXTRA_SERVER_URL = "extra_server_url"
-
+        @Volatile var isRunning = false
+            private set
         private val _latestLoggedMetric = MutableStateFlow<SignalMetricDto?>(null)
         val latestLoggedMetric: StateFlow<SignalMetricDto?> = _latestLoggedMetric.asStateFlow()
     }

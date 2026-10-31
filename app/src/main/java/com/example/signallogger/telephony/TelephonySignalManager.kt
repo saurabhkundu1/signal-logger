@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.example.signallogger.telephony
 
 import android.content.Context
@@ -17,12 +19,15 @@ class TelephonySignalManager(private val context: Context) {
 
     private val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-    private val _currentMetric = MutableStateFlow(buildCurrentMetric(-85, 3))
+    private val _currentMetric = MutableStateFlow(
+        SignalMetricDto(operatorName = "Unknown Operator", signalStrengthDbm = -85, signalLevel = 3, networkType = "Cellular")
+    )
     val currentMetric: StateFlow<SignalMetricDto> = _currentMetric.asStateFlow()
 
     private var telephonyCallback: Any? = null
 
     fun startListening() {
+        if (telephonyCallback != null) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val callback = object : TelephonyCallback(), TelephonyCallback.SignalStrengthsListener {
                 override fun onSignalStrengthsChanged(signalStrength: SignalStrength) {
@@ -37,8 +42,8 @@ class TelephonySignalManager(private val context: Context) {
                     context.mainExecutor,
                     callback
                 )
-            } catch (e: SecurityException) {
-                e.printStackTrace()
+            } catch (_: SecurityException) {
+                telephonyCallback = null
             }
         } else {
             @Suppress("DEPRECATION")
@@ -53,21 +58,30 @@ class TelephonySignalManager(private val context: Context) {
                 }
             }
             telephonyCallback = listener
-            @Suppress("DEPRECATION")
-            telephonyManager.listen(listener, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
+            try {
+                @Suppress("DEPRECATION")
+                telephonyManager.listen(listener, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
+            } catch (_: SecurityException) {
+                telephonyCallback = null
+            }
         }
     }
 
     fun stopListening() {
         telephonyCallback?.let { callback ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && callback is TelephonyCallback) {
-                telephonyManager.unregisterTelephonyCallback(callback)
-            } else if (callback is PhoneStateListener) {
-                @Suppress("DEPRECATION")
-                telephonyManager.listen(callback, PhoneStateListener.LISTEN_NONE)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && callback is TelephonyCallback) {
+                    telephonyManager.unregisterTelephonyCallback(callback)
+                } else if (callback is PhoneStateListener) {
+                    @Suppress("DEPRECATION")
+                    telephonyManager.listen(callback, PhoneStateListener.LISTEN_NONE)
+                }
+            } catch (_: SecurityException) {
+                // Permission can be revoked while the listener is active.
+            } finally {
+                telephonyCallback = null
             }
         }
-        telephonyCallback = null
     }
 
     fun fetchCurrentMetricNow(): SignalMetricDto {
@@ -79,18 +93,21 @@ class TelephonySignalManager(private val context: Context) {
 
     private fun buildCurrentMetric(dbm: Int, level: Int): SignalMetricDto {
         return SignalMetricDto(
-            operatorName = getOperatorNameInternal(),
-            simOperatorName = getSimOperatorNameInternal(),
-            countryIso = getCountryIsoInternal(),
+            operatorName = telephonyOr("Unknown Operator", ::getOperatorNameInternal),
+            simOperatorName = telephonyOr("N/A", ::getSimOperatorNameInternal),
+            countryIso = telephonyOr("", ::getCountryIsoInternal),
             signalStrengthDbm = dbm,
             signalLevel = level,
             networkType = getNetworkTypeInternal(),
-            isRoaming = telephonyManager.isNetworkRoaming,
-            dataState = getDataStateInternal(),
-            simState = getSimStateInternal(),
+            isRoaming = telephonyOr(false) { telephonyManager.isNetworkRoaming },
+            dataState = telephonyOr("Disconnected", ::getDataStateInternal),
+            simState = telephonyOr("Unknown", ::getSimStateInternal),
             timestamp = System.currentTimeMillis()
         )
     }
+
+    private inline fun <T> telephonyOr(fallback: T, read: () -> T): T =
+        try { read() } catch (_: SecurityException) { fallback }
 
     private fun getOperatorNameInternal(): String {
         val networkOperatorName = telephonyManager.networkOperatorName
