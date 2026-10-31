@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Upgrade the Gradle wrapper to 9.8.2 to satisfy Android lint's toolchain compatibility check.
+- Update AGP and kotlinx serialization to versions required by current Android lint checks.
 
 ## 1.2.0 - 2026-10-31
 - Update the Android toolchain and dependencies to current stable versions and target Android 17 (API 37).
