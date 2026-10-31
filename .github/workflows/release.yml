@@ -17,7 +17,7 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-      APPLIFY_DISPATCH_TOKEN: ${{ secrets.APPLIFY_DISPATCH_TOKEN }}
+      APPLIFY_DISPATCH_TOKEN: ${{ secrets.GH_PAT }}
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
