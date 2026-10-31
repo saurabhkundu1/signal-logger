@@ -72,6 +72,14 @@ class MainActivity : ComponentActivity() {
         }.onSuccess { Toast.makeText(this, "Signal history exported", Toast.LENGTH_SHORT).show() }
             .onFailure { Toast.makeText(this, "Export failed: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
     }
+    private val geoJsonExportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/geo+json")) { uri: Uri? ->
+        if (uri == null) return@registerForActivityResult
+        runCatching {
+            contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(LocalSignalStore(this).toGeoJson()) }
+                ?: error("Could not open the selected file")
+        }.onSuccess { Toast.makeText(this, "Signal map exported", Toast.LENGTH_SHORT).show() }
+            .onFailure { Toast.makeText(this, "Export failed: ${it.localizedMessage}", Toast.LENGTH_LONG).show() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,9 +88,13 @@ class MainActivity : ComponentActivity() {
         if (hasPermissions.value) signalManager.startListening()
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors) {
-                SignalAtlasScreen(signalManager, hasPermissions.value, ::requestMissingPermissions) {
-                    exportLauncher.launch("signal-atlas-readings.csv")
-                }
+                SignalAtlasScreen(
+                    signalManager,
+                    hasPermissions.value,
+                    ::requestMissingPermissions,
+                    exportReadings = { exportLauncher.launch("signal-atlas-readings.csv") },
+                    exportGeoJson = { geoJsonExportLauncher.launch("signal-atlas-readings.geojson") }
+                )
             }
         }
     }
@@ -116,7 +128,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SignalAtlasScreen(manager: TelephonySignalManager, granted: Boolean, requestPermissions: () -> Unit, exportReadings: () -> Unit) {
+private fun SignalAtlasScreen(manager: TelephonySignalManager, granted: Boolean, requestPermissions: () -> Unit, exportReadings: () -> Unit, exportGeoJson: () -> Unit) {
     val context = LocalContext.current
     val store = remember { LocalSignalStore(context) }
     val metric by manager.currentMetric.collectAsState()
@@ -195,6 +207,8 @@ private fun SignalAtlasScreen(manager: TelephonySignalManager, granted: Boolean,
                         Text("The chart shows up to 60 local readings. Lower (more negative) values mean weaker signal.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                         OutlinedButton(onClick = exportReadings, modifier = Modifier.fillMaxWidth()) { Text("Export all readings as CSV") }
                         Text("CSV includes time, carrier, network type and signal strength; it excludes location data.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        OutlinedButton(onClick = exportGeoJson, modifier = Modifier.fillMaxWidth()) { Text("Export mapped readings as GeoJSON") }
+                        Text("GeoJSON includes approximate area coordinates, carrier, network type and signal strength.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                     }
                 }
             }

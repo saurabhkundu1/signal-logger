@@ -5,6 +5,9 @@ import android.annotation.SuppressLint
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 @Serializable
 data class SignalReading(
@@ -49,6 +52,27 @@ class LocalSignalStore(context: Context) {
             ).joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" })
         }
     }
+
+    @Synchronized
+    fun toGeoJson(): String = JsonObject(mapOf(
+        "type" to JsonPrimitive("FeatureCollection"),
+        "features" to JsonArray(read().map { reading ->
+            JsonObject(mapOf(
+                "type" to JsonPrimitive("Feature"),
+                "geometry" to JsonObject(mapOf(
+                    "type" to JsonPrimitive("Point"),
+                    "coordinates" to JsonArray(listOf(JsonPrimitive(reading.longitude), JsonPrimitive(reading.latitude)))
+                )),
+                "properties" to JsonObject(mapOf(
+                    "operator" to JsonPrimitive(reading.operatorName),
+                    "networkType" to JsonPrimitive(reading.networkType),
+                    "signalStrengthDbm" to JsonPrimitive(reading.signalStrengthDbm),
+                    "areaCell" to JsonPrimitive(reading.areaCell),
+                    "timestamp" to JsonPrimitive(reading.timestamp)
+                ))
+            ))
+        })
+    )).toString()
 
     private fun csvText(value: String) = if (value.firstOrNull() in listOf('=', '+', '-', '@')) "'$value" else value
 

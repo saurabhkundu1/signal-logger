@@ -10,7 +10,7 @@ Signal Atlas records cellular reception and maps readings by approximate area. A
 - Saves the center of a five-character geohash (approximately a 5 km area), not exact coordinates.
 - Shows saved areas on OpenStreetMap. The map requires an internet connection and displays map attribution. OpenStreetMap's public tiles are best-effort and subject to its [tile usage policy](https://operations.osmfoundation.org/policies/tiles/); no offline tile downloads are made.
 - Keeps the most recent 2,000 readings on the device.
-- Charts recent signal history, filters by operator, and exports readings to CSV. CSV exports omit area/cell location data.
+- Charts recent signal history, filters by operator, and exports readings to CSV or GeoJSON. CSV omits area/cell location data; GeoJSON includes approximate coordinates for mapping.
 
 ## Build
 
