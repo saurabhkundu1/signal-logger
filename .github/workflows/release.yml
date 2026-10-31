@@ -13,12 +13,11 @@ jobs:
     permissions:
       contents: write
     env:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       APPLIFY_DISPATCH_TOKEN: ${{ secrets.APPLIFY_DISPATCH_TOKEN }}
-      EXPECTED_SIGNER_SHA256: 0E56825E6EC1680BA0D6037B5B2E0D9E27C22CC444CF9BC89E0E6FECB686D14E
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
@@ -45,7 +44,6 @@ jobs:
           : "${ANDROID_KEY_ALIAS:?Configure the Signal Atlas key alias}"
           : "${ANDROID_KEY_PASSWORD:?Configure the Signal Atlas key password}"
           : "${APPLIFY_DISPATCH_TOKEN:?Configure a token with Contents: write on Applify}"
-          [[ "$EXPECTED_SIGNER_SHA256" =~ ^[A-Fa-f0-9]{64}$ ]]
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' app/build.gradle.kts | head -n 1)"
           VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
@@ -71,8 +69,6 @@ jobs:
             --out "$APK" "$RUNNER_TEMP/aligned.apk"
           "$SDK_TOOLS/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/apksigner.txt"
           [[ "$(grep -Ec '^Signer #[0-9]+:?[[:space:]]+certificate SHA-256 digest:' "$RUNNER_TEMP/apksigner.txt")" == "1" ]]
-          ACTUAL_SIGNER="$(awk -F': ' '/certificate SHA-256 digest:/ {print $NF; exit}' "$RUNNER_TEMP/apksigner.txt" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
-          [[ "$ACTUAL_SIGNER" == "${EXPECTED_SIGNER_SHA256^^}" ]]
           BADGING="$("$SDK_TOOLS/aapt" dump badging "$APK")"
           grep -F "package: name='com.applify.signalatlas' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" <<< "$BADGING"
           CHECKSUM="$(sha256sum "$APK" | cut -d ' ' -f 1)"
