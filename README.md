@@ -1,5 +1,7 @@
 # Signal Atlas
 
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+
 Signal Atlas records cellular reception and maps readings by approximate area. All readings remain on the device; the app has no account, upload endpoint, or self-hosted reporting server.
 
 ## Android app
