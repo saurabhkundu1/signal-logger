@@ -1,30 +1,32 @@
 # Signal Atlas
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+![Version](https://img.shields.io/badge/source%20version-1.2.0-blue)
+![Android](https://img.shields.io/badge/Android-API%2026%2B-green)
 
-Signal Atlas records cellular reception and maps readings by approximate area. All readings remain on the device; the app has no account, upload endpoint, or self-hosted reporting server.
+Signal Atlas records cellular reception on your device and shows readings by approximate area. Logging is opt-in. Readings stay local; there is no account, upload service, or hosted reporting server.
 
-## Android app
+## Features
 
-- Displays signal strength, carrier, network type, roaming, and SIM state.
-- Requests phone-state and approximate-location permissions only after the user chooses to enable signal access. Android remembers persistent grants; one-time grants, revoked access, or Android's automatic permission reset can require another prompt.
-- Optional logging runs only after the user starts it and saves at most one reading per minute locally. Stop logging at any time.
-- Saves the center of a five-character geohash (approximately a 5 km area), not exact coordinates.
-- Shows saved areas on OpenStreetMap. The map requires an internet connection and displays map attribution. OpenStreetMap's public tiles are best-effort and subject to its [tile usage policy](https://operations.osmfoundation.org/policies/tiles/); no offline tile downloads are made.
-- Keeps the most recent 2,000 readings on the device.
-- Charts recent signal history, filters by operator, and exports readings to CSV or GeoJSON. CSV omits area/cell location data; GeoJSON includes approximate coordinates for mapping.
+- View signal strength, carrier, network type, roaming, and SIM state.
+- Start and stop local logging; save at most one reading per minute and keep the latest 2,000.
+- Store the center of an approximately 5 km area cell instead of exact coordinates.
+- Browse areas on OpenStreetMap. Map tiles need internet access and may reveal the area being viewed to the tile provider.
+- Filter history by operator and export CSV or GeoJSON. CSV omits area data; GeoJSON includes approximate coordinates.
 
 ## Build
 
+Use JDK 17 and Android SDK 37:
+
 ```bash
 ./gradlew :app:assembleDebug
-./gradlew :app:assembleRelease
 ```
 
-## Privacy
+On Windows, run `gradlew.bat :app:assembleDebug`. The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
-No signal readings or location data are uploaded. Approximate area, carrier, network type, signal strength, and time are stored in app-private local storage. Map requests go to OpenStreetMap to display map tiles; map tile requests may reveal the viewed area to the tile service. Uninstalling the app removes its local readings.
+## Releases and Droidify
 
-## License
+The current source version is `1.2.0` (`versionCode` 3). Push a `vMAJOR.MINOR.PATCH` tag to build and sign the APK, publish it on [GitHub Releases](https://github.com/saurabhkundu1/signal-logger/releases), and send it to [Applify](https://saurabhkundu1.github.io/Applify/) for the Droidify-compatible repository. Configure the existing app-signing key and the repository's `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, and `APPLIFY_DISPATCH_TOKEN` secrets before tagging.
 
-Apache License 2.0. See [LICENSE](LICENSE).
+## Privacy and license
+
+Signal history and approximate area are stored in app-private local storage. The map contacts OpenStreetMap for tiles; see its [tile usage policy](https://operations.osmfoundation.org/policies/tiles/). Uninstalling the app removes its local readings. Signal Atlas is licensed under [Apache License 2.0](LICENSE).
