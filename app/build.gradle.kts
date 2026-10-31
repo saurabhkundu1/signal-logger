@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "com.example.signallogger"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.applify.signalatlas"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 3
         versionName = "1.2.0"
 

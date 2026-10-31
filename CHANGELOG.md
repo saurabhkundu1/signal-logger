@@ -1,7 +1,7 @@
 # Changelog
 
 ## 1.2.0 - 2026-10-31
-- Update the Android toolchain and dependencies to current stable versions and target Android 16 (API 36).
+- Update the Android toolchain and dependencies to current stable versions and target Android 17 (API 37).
 - Migrate to AGP built-in Kotlin.
 - Restore the Gradle wrapper for reproducible builds.
 - Add push-triggered CI for lint, unit tests, and debug builds.
