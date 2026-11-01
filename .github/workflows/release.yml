@@ -64,11 +64,13 @@ jobs:
           trap 'rm -f "$KEYSTORE"' EXIT
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
           "$SDK_TOOLS/zipalign" -f -p 4 "$UNSIGNED_APK" "$RUNNER_TEMP/aligned.apk"
-          "$SDK_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$ANDROID_KEY_ALIAS" \
+          if ! "$SDK_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$ANDROID_KEY_ALIAS" \
             --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD \
-            --out "$APK" "$RUNNER_TEMP/aligned.apk"
+            --out "$APK" "$RUNNER_TEMP/aligned.apk"; then
+            echo "::error::APK signing failed. Check that KEYSTORE_PASSWORD and KEY_PASSWORD match this keystore."
+            exit 1
+          fi
           "$SDK_TOOLS/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/apksigner.txt"
-          [[ "$(grep -Ec '^Signer #[0-9]+:?[[:space:]]+certificate SHA-256 digest:' "$RUNNER_TEMP/apksigner.txt")" == "1" ]]
           BADGING="$("$SDK_TOOLS/aapt" dump badging "$APK")"
           grep -F "package: name='com.applify.signalatlas' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" <<< "$BADGING"
           CHECKSUM="$(sha256sum "$APK" | cut -d ' ' -f 1)"
