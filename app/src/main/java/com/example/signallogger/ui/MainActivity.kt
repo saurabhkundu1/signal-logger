@@ -7,6 +7,7 @@ import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.text.format.DateFormat as AndroidDateFormat
 import android.webkit.WebView
 import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,18 +33,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.example.signallogger.data.LocalSignalStore
+import com.example.signallogger.data.NamedAreaSignalSummary
+import com.example.signallogger.data.signalSnapshot
 import com.example.signallogger.data.SignalReading
 import com.example.signallogger.service.SignalLoggerForegroundService
 import com.example.signallogger.telephony.TelephonySignalManager
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 
@@ -134,17 +142,15 @@ private fun SignalAtlasScreen(manager: TelephonySignalManager, granted: Boolean,
     val metric by manager.currentMetric.collectAsState()
     val latest by SignalLoggerForegroundService.latestLoggedMetric.collectAsState()
     var readings by remember { mutableStateOf(store.read().asReversed()) }
+    var areaLabels by remember { mutableStateOf(store.areaLabels()) }
+    var editingArea by remember { mutableStateOf<String?>(null) }
+    var areaLabelDraft by remember { mutableStateOf("") }
     var selectedOperator by remember { mutableStateOf("All") }
-    var logging by remember { mutableStateOf(false) }
+    val logging by SignalLoggerForegroundService.isRunningFlow.collectAsState()
+    val namedAreaSummaries = remember(readings, areaLabels) { store.namedAreaSummaries() }
     LaunchedEffect(latest) { if (latest != null) readings = store.read().asReversed() }
     val operators = listOf("All") + readings.map { it.operatorName }.distinct()
     val filteredReadings = readings.filter { selectedOperator == "All" || it.operatorName == selectedOperator }
-    LaunchedEffect(Unit) {
-        while (true) {
-            logging = SignalLoggerForegroundService.isRunning
-            delay(1500)
-        }
-    }
 
     Scaffold(topBar = {
         TopAppBar(title = { Column {
@@ -157,10 +163,21 @@ private fun SignalAtlasScreen(manager: TelephonySignalManager, granted: Boolean,
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("YOUR CONNECTION, IN CONTEXT", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
                     Text("Know your signal.", color = MaterialTheme.colorScheme.onBackground, fontSize = 29.sp, fontWeight = FontWeight.Bold)
-                    Text("Signal readings stay on this device.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                    Text("History stays on-device. Share a location-free snapshot when you choose.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                 }
             }
-            item { SignalCard(metric.operatorName, metric.signalStrengthDbm, metric.networkType, granted, requestPermissions) }
+            item {
+                SignalCard(metric.operatorName, metric.signalStrengthDbm, metric.networkType, granted, requestPermissions) {
+                    val share = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(
+                            Intent.EXTRA_TEXT,
+                            signalSnapshot(metric.operatorName, metric.networkType, metric.signalStrengthDbm, metric.signalLevel),
+                        )
+                    }
+                    context.startActivity(Intent.createChooser(share, "Share signal reading"))
+                }
+            }
             item {
                 Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -170,10 +187,25 @@ private fun SignalAtlasScreen(manager: TelephonySignalManager, granted: Boolean,
                         else Box(Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
                             Text("Start logging to map a reading", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        if (readings.isNotEmpty()) {
+                            Text("Name a familiar area", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(readings.map { it.areaCell }.distinct()) { area ->
+                                    val label = areaLabels[area]
+                                    FilterChip(
+                                        selected = label != null,
+                                        onClick = { editingArea = area; areaLabelDraft = label.orEmpty() },
+                                        label = { Text(label ?: "Area $area") },
+                                    )
+                                }
+                            }
+                            Text("Area names stay on this device and are left out of exports.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        }
                         Text("© OpenStreetMap contributors", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                     }
                 }
             }
+            item { NamedAreaSummaryCard(namedAreaSummaries, areaLabels.isNotEmpty()) }
             item {
                 Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -185,7 +217,6 @@ private fun SignalAtlasScreen(manager: TelephonySignalManager, granted: Boolean,
                                 val intent = Intent(context, SignalLoggerForegroundService::class.java)
                                 if (logging) context.stopService(intent)
                                 else context.startForegroundService(intent)
-                                logging = !logging
                             }
                         }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) {
                             Text(if (!granted) "Allow signal and location" else if (logging) "Stop saving readings" else "Start saving readings", fontWeight = FontWeight.Bold)
@@ -220,7 +251,136 @@ private fun SignalAtlasScreen(manager: TelephonySignalManager, granted: Boolean,
                 }
             }
             if (filteredReadings.isEmpty()) item { Text("No readings saved for this carrier yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            items(filteredReadings.take(100)) { ReadingCard(it) }
+            items(filteredReadings.take(100)) { ReadingCard(it, areaLabels[it.areaCell]) }
+        }
+    }
+
+    editingArea?.let { area ->
+        AlertDialog(
+            onDismissRequest = { editingArea = null },
+            title = { Text("Name this area") },
+            text = {
+                OutlinedTextField(
+                    value = areaLabelDraft,
+                    onValueChange = { areaLabelDraft = it.take(32) },
+                    label = { Text("Place name") },
+                    supportingText = { Text("Up to 32 characters. Leave blank to remove the name.") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    store.setAreaLabel(area, areaLabelDraft)
+                    areaLabels = store.areaLabels()
+                    editingArea = null
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editingArea = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun NamedAreaSummaryCard(summaries: List<NamedAreaSignalSummary>, hasNamedAreas: Boolean) {
+    val context = LocalContext.current
+    val dateFormat = remember(context) { AndroidDateFormat.getDateFormat(context) }
+    val timeFormat = remember(context) { AndroidDateFormat.getTimeFormat(context) }
+    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Past seven days by place", fontWeight = FontWeight.Bold, fontSize = 19.sp)
+            Text("Median signal · weakest areas first", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            if (summaries.isEmpty()) {
+                Text(
+                    if (hasNamedAreas) "No saved readings from named areas in the past seven days."
+                    else "Name a familiar area to start comparing places.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                )
+            } else {
+                summaries.forEach { summary ->
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(summary.name, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "${summary.operatorName} · ${summary.readingCount} ${if (summary.readingCount == 1) "reading" else "readings"}",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                )
+                                val latestReading = Date(summary.latestReadingAt)
+                                Text(
+                                    "Latest ${dateFormat.format(latestReading)} · ${timeFormat.format(latestReading)}",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                            Text("${summary.medianDbm} dBm", fontWeight = FontWeight.Bold)
+                        }
+                        NamedAreaSignalTrend(summary)
+                    }
+                }
+            }
+            Text(
+                "Uses only saved readings. Logging gaps and the 2,000-reading history limit can shorten coverage.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NamedAreaSignalTrend(summary: NamedAreaSignalSummary) {
+    val barColor = MaterialTheme.colorScheme.primary
+    val locale = LocalConfiguration.current.locales[0]
+    val dates = remember(locale) { DateTimeFormatter.ofPattern("d/M", locale) }
+    val spokenDates = remember(locale) { DateTimeFormatter.ofPattern("EEEE, d MMMM", locale) }
+    val values = summary.dailyTrend.mapNotNull { it.medianDbm }
+    val min = values.minOrNull() ?: 0
+    val max = values.maxOrNull() ?: 0
+    val range = (max.toLong() - min.toLong()).coerceAtLeast(1L).toFloat()
+    val accessibleSummary = remember(summary) {
+        buildString {
+            append("Daily median signal in dBm for ${summary.name} on ${summary.operatorName}. Taller bars mean stronger reception. ")
+            append(summary.dailyTrend.joinToString(". ") { day ->
+                val date = day.date.format(spokenDates)
+                if (day.medianDbm == null) "$date: no readings"
+                else "$date: ${day.medianDbm} dBm from ${day.readingCount} ${if (day.readingCount == 1) "reading" else "readings"}"
+            })
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            "Daily median dBm · oldest to newest · — means no readings",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 10.sp,
+        )
+        Row(
+            Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = accessibleSummary },
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            summary.dailyTrend.forEach { day ->
+                Column(
+                    Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
+                    Box(Modifier.fillMaxWidth().height(25.dp), contentAlignment = Alignment.BottomCenter) {
+                        day.medianDbm?.let { dbm ->
+                            val barHeight = if (max == min) 14.dp else {
+                                (4f + 21f * (dbm.toLong() - min.toLong()).toFloat() / range).dp
+                            }
+                            Box(
+                                Modifier.width(8.dp).height(barHeight)
+                                    .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                    .background(barColor),
+                            )
+                        }
+                    }
+                    Text(day.date.format(dates), fontSize = 8.sp, maxLines = 1)
+                    Text(day.medianDbm?.toString() ?: "—", fontSize = 9.sp, maxLines = 1)
+                }
+            }
         }
     }
 }
@@ -248,7 +408,7 @@ private fun SignalHistoryChart(readings: List<SignalReading>) {
 }
 
 @Composable
-private fun SignalCard(operator: String, dbm: Int, network: String, granted: Boolean, request: () -> Unit) {
+private fun SignalCard(operator: String, dbm: Int, network: String, granted: Boolean, request: () -> Unit, shareReading: () -> Unit) {
     Card(shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
         Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF123B49), Color(0xFF176E77), Color(0xFF248B8C)))).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("LIVE READING", color = Color(0xFFB9DFDF), fontSize = 10.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
@@ -258,6 +418,9 @@ private fun SignalCard(operator: String, dbm: Int, network: String, granted: Boo
                 Text(" dBm · ${if (granted) network else "cellular"}", color = Color(0xFFD2E8E8), modifier = Modifier.padding(bottom = 7.dp))
             }
             if (!granted) Text("Allow phone and approximate location access once. Android remembers the choice unless it is revoked or set to one-time access.", color = Color(0xFFD2E8E8), fontSize = 13.sp)
+            if (granted) TextButton(onClick = shareReading, modifier = Modifier.align(Alignment.End)) {
+                Text("Share reading", color = Color.White)
+            }
         }
     }
 }
@@ -288,13 +451,14 @@ private fun OpenStreetMapView(reading: SignalReading) {
 }
 
 @Composable
-private fun ReadingCard(reading: SignalReading) {
-    val date = remember(reading.timestamp) { SimpleDateFormat("d MMM · HH:mm", Locale.getDefault()).format(Date(reading.timestamp)) }
+private fun ReadingCard(reading: SignalReading, areaLabel: String?) {
+    val locale = LocalConfiguration.current.locales[0]
+    val date = remember(reading.timestamp, locale) { SimpleDateFormat("d MMM · HH:mm", locale).format(Date(reading.timestamp)) }
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Row(Modifier.fillMaxWidth().padding(15.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(reading.operatorName, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
-                Text("${reading.networkType} · Approx. area ${reading.areaCell}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                Text("${reading.networkType} · Approx. area ${areaLabel ?: reading.areaCell}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                 Text(date, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
             }
             Text("${reading.signalStrengthDbm} dBm", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)

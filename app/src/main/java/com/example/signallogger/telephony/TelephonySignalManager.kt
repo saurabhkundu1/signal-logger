@@ -5,6 +5,7 @@ package com.example.signallogger.telephony
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.telephony.CellInfo
 import android.telephony.PhoneStateListener
 import android.telephony.SignalStrength
 import android.telephony.TelephonyCallback
@@ -180,7 +181,7 @@ class TelephonySignalManager(private val context: Context) {
     private fun extractDbm(signalStrength: SignalStrength): Int {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val cellSignals = signalStrength.cellSignalStrengths
-            cellSignals.firstOrNull()?.let {
+            cellSignals.firstOrNull { it.dbm != CellInfo.UNAVAILABLE }?.let {
                 return it.dbm
             }
         }

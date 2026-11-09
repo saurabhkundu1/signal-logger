@@ -20,6 +20,15 @@ data class SignalReading(
     val timestamp: Long
 )
 
+data class NamedAreaSignalSummary(
+    val name: String,
+    val operatorName: String,
+    val medianDbm: Int,
+    val readingCount: Int,
+    val latestReadingAt: Long,
+    val dailyTrend: List<NamedAreaDailySignal>,
+)
+
 class LocalSignalStore(context: Context) {
     private val preferences = context.getSharedPreferences("signal_atlas_readings", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
@@ -43,15 +52,31 @@ class LocalSignalStore(context: Context) {
     }.getOrDefault(emptyList())
 
     @Synchronized
-    fun toCsv(): String = buildString {
-        appendLine("timestamp,operator,network_type,signal_dbm")
-        read().forEach { reading ->
-            appendLine(listOf(
-                reading.timestamp.toString(), csvText(reading.operatorName), csvText(reading.networkType),
-                reading.signalStrengthDbm.toString()
-            ).joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" })
+    fun areaLabels(): Map<String, String> = runCatching {
+        json.decodeFromString<Map<String, String>>(preferences.getString(AREA_LABELS_KEY, "{}") ?: "{}")
+    }.getOrDefault(emptyMap())
+
+    @Synchronized
+    fun namedAreaSummaries(): List<NamedAreaSignalSummary> {
+        val now = System.currentTimeMillis()
+        return summarizeNamedAreas(read(), areaLabels(), now)
+    }
+
+    @Synchronized
+    @SuppressLint("UseKtx")
+    fun setAreaLabel(areaCell: String, label: String) {
+        require(areaCell.length == 5)
+        val labels = areaLabels().toMutableMap()
+        // shortcut: area names stop at 32 characters, raise the limit if users need longer labels.
+        val name = label.trim().take(32)
+        if (name.isEmpty()) labels.remove(areaCell) else labels[areaCell] = name
+        check(preferences.edit().putString(AREA_LABELS_KEY, json.encodeToString(labels)).commit()) {
+            "Could not save area name locally"
         }
     }
+
+    @Synchronized
+    fun toCsv(): String = signalReadingsCsv(read())
 
     @Synchronized
     fun toGeoJson(): String = JsonObject(mapOf(
@@ -74,7 +99,8 @@ class LocalSignalStore(context: Context) {
         })
     )).toString()
 
-    private fun csvText(value: String) = if (value.firstOrNull() in listOf('=', '+', '-', '@')) "'$value" else value
-
-    companion object { private const val KEY = "readings" }
+    companion object {
+        private const val KEY = "readings"
+        private const val AREA_LABELS_KEY = "area_labels"
+    }
 }

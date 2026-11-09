@@ -12,8 +12,8 @@ android {
         applicationId = "com.applify.signalatlas"
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 5
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -36,6 +36,7 @@ android {
     }
     lint {
         warningsAsErrors = true
+        disable += "AndroidGradlePluginVersion"
     }
 }
 
@@ -56,6 +57,8 @@ dependencies {
 
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

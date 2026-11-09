@@ -100,8 +100,14 @@ class SignalLoggerForegroundService : Service() {
     companion object {
         const val CHANNEL_ID = "signal_logger_channel"
         const val NOTIFICATION_ID = 1001
+        private val _isRunningFlow = MutableStateFlow(false)
+        val isRunningFlow: StateFlow<Boolean> = _isRunningFlow.asStateFlow()
+
         @Volatile var isRunning = false
-            private set
+            private set(value) {
+                field = value
+                _isRunningFlow.value = value
+            }
         private val _latestLoggedMetric = MutableStateFlow<SignalMetricDto?>(null)
         val latestLoggedMetric: StateFlow<SignalMetricDto?> = _latestLoggedMetric.asStateFlow()
     }
