@@ -79,6 +79,9 @@ class LocalSignalStore(context: Context) {
     fun toCsv(): String = signalReadingsCsv(read())
 
     @Synchronized
+    fun toJson(): String = signalReadingsJson(read())
+
+    @Synchronized
     fun toGeoJson(): String = JsonObject(mapOf(
         "type" to JsonPrimitive("FeatureCollection"),
         "features" to JsonArray(read().map { reading ->
