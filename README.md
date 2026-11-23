@@ -1,5 +1,6 @@
 # Signal Atlas
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Version](https://img.shields.io/badge/source%20version-1.4.0-blue)
 ![Android](https://img.shields.io/badge/Android-API%2026%2B-green)
 
@@ -35,4 +36,4 @@ The proposed source candidate is `1.4.0` (`versionCode` 5), pending device revie
 
 ## Privacy and license
 
-Signal history, approximate area, and area labels are stored in app-private local storage. A manually shared live snapshot contains only carrier, network type, and signal strength. The map contacts OpenStreetMap for tiles; see its [tile usage policy](https://operations.osmfoundation.org/policies/tiles/). Uninstalling the app removes its local readings. Signal Atlas is licensed under [Apache License 2.0](LICENSE).
+Signal history, approximate area, and area labels are stored in app-private local storage. A manually shared live snapshot contains only carrier, network type, and signal strength. The map contacts OpenStreetMap for tiles; see its [tile usage policy](https://operations.osmfoundation.org/policies/tiles/). Uninstalling the app removes its local readings. Signal Atlas is licensed under the [MIT License](LICENSE).
