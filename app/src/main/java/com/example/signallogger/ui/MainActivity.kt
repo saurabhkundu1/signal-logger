@@ -215,6 +215,7 @@ private fun SignalAtlasScreen(manager: TelephonySignalManager, granted: Boolean,
                 }
             }
             item { NamedAreaSummaryCard(namedAreaSummaries, areaLabels.isNotEmpty()) }
+            item { NetworkAnalyticsCard(readings) }
             item {
                 Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -428,6 +429,26 @@ private fun SignalCard(operator: String, dbm: Int, network: String, granted: Boo
                 Text(if (granted) "$dbm" else "—", color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Bold)
                 Text(" dBm · ${if (granted) network else "cellular"}", color = Color(0xFFD2E8E8), modifier = Modifier.padding(bottom = 7.dp))
             }
+            if (granted) {
+                val (qualityLabel, qualityColor) = when {
+                    dbm >= -85 -> "● Excellent Reception" to Color(0xFF34D399)
+                    dbm >= -95 -> "● Good Reception" to Color(0xFF6EE7B7)
+                    dbm >= -105 -> "● Fair Reception" to Color(0xFFFBBF24)
+                    else -> "● Poor Reception" to Color(0xFFF87171)
+                }
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0x33000000)
+                ) {
+                    Text(
+                        text = qualityLabel,
+                        color = qualityColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
             if (!granted) Text("Allow phone and approximate location access once. Android remembers the choice unless it is revoked or set to one-time access.", color = Color(0xFFD2E8E8), fontSize = 13.sp)
             if (granted) TextButton(onClick = shareReading, modifier = Modifier.align(Alignment.End)) {
                 Text("Share reading", color = Color.White)
@@ -476,3 +497,93 @@ private fun ReadingCard(reading: SignalReading, areaLabel: String?) {
         }
     }
 }
+
+@Composable
+private fun NetworkAnalyticsCard(readings: List<SignalReading>) {
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Network & signal analytics", fontWeight = FontWeight.Bold, fontSize = 19.sp)
+            Text(
+                "Aggregated statistics across your on-device history",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+
+            if (readings.isEmpty()) {
+                Text(
+                    "Start logging to compute network signal metrics and technology distribution.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp
+                )
+            } else {
+                val dbmList = readings.map { it.signalStrengthDbm }
+                val minDbm = dbmList.minOrNull() ?: 0
+                val maxDbm = dbmList.maxOrNull() ?: 0
+                val avgDbm = (dbmList.sum().toDouble() / dbmList.size).toInt()
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    StatPill("Strongest", "$maxDbm dBm", Color(0xFF10B981))
+                    StatPill("Average", "$avgDbm dBm", MaterialTheme.colorScheme.primary)
+                    StatPill("Weakest", "$minDbm dBm", Color(0xFFEF4444))
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 1.dp)
+
+                Text("Technology distribution", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                val totalCount = readings.size
+                val lteCount = readings.count { it.networkType.contains("LTE", ignoreCase = true) || it.networkType.contains("4G", ignoreCase = true) }
+                val nrCount = readings.count { it.networkType.contains("NR", ignoreCase = true) || it.networkType.contains("5G", ignoreCase = true) }
+                val otherCount = (totalCount - lteCount - nrCount).coerceAtLeast(0)
+
+                val ltePct = (lteCount * 100) / totalCount
+                val nrPct = (nrCount * 100) / totalCount
+                val otherPct = (100 - ltePct - nrPct).coerceAtLeast(0)
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TechProgressBar("5G (NR)", nrPct, nrCount, Color(0xFF78D1D8))
+                    TechProgressBar("4G (LTE)", ltePct, lteCount, MaterialTheme.colorScheme.primary)
+                    if (otherCount > 0) {
+                        TechProgressBar("3G / Other", otherPct, otherCount, Color(0xFFE1A36D))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatPill(label: String, value: String, valueColor: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = valueColor)
+    }
+}
+
+@Composable
+private fun TechProgressBar(label: String, percentage: Int, count: Int, color: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("$label · $percentage%", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text("$count samples", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        LinearProgressIndicator(
+            progress = { percentage / 100f },
+            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    }
+}
+
