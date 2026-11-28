@@ -523,17 +523,17 @@ private fun NetworkAnalyticsCard(readings: List<SignalReading>) {
                 )
             } else {
                 val dbmList = readings.map { it.signalStrengthDbm }
-                val minDbm = dbmList.minOrNull() ?: 0
-                val maxDbm = dbmList.maxOrNull() ?: 0
-                val avgDbm = (dbmList.sum().toDouble() / dbmList.size).toInt()
+                val minDbm = dbmList.minOrNull()
+                val maxDbm = dbmList.maxOrNull()
+                val avgDbm = if (dbmList.isNotEmpty()) (dbmList.sum().toDouble() / dbmList.size).toInt() else null
 
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    StatPill("Strongest", "$maxDbm dBm", Color(0xFF10B981))
-                    StatPill("Average", "$avgDbm dBm", MaterialTheme.colorScheme.primary)
-                    StatPill("Weakest", "$minDbm dBm", Color(0xFFEF4444))
+                    StatPill("Strongest", if (maxDbm != null) "$maxDbm dBm" else "—", Color(0xFF10B981))
+                    StatPill("Average", if (avgDbm != null) "$avgDbm dBm" else "—", MaterialTheme.colorScheme.primary)
+                    StatPill("Weakest", if (minDbm != null) "$minDbm dBm" else "—", Color(0xFFEF4444))
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 1.dp)
@@ -544,8 +544,8 @@ private fun NetworkAnalyticsCard(readings: List<SignalReading>) {
                 val nrCount = readings.count { it.networkType.contains("NR", ignoreCase = true) || it.networkType.contains("5G", ignoreCase = true) }
                 val otherCount = (totalCount - lteCount - nrCount).coerceAtLeast(0)
 
-                val ltePct = (lteCount * 100) / totalCount
-                val nrPct = (nrCount * 100) / totalCount
+                val ltePct = if (totalCount > 0) (lteCount * 100) / totalCount else 0
+                val nrPct = if (totalCount > 0) (nrCount * 100) / totalCount else 0
                 val otherPct = (100 - ltePct - nrPct).coerceAtLeast(0)
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
